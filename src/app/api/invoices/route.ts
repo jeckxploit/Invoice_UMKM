@@ -37,9 +37,32 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '20');
     const userId = searchParams.get('userId');
-    
-    const whereClause = userId ? { userId } : {};
-    
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'User ID diperlukan' },
+        { status: 400 }
+      );
+    }
+
+    // Check if user exists, create if not
+    let user = await db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      // Auto-create user if not found
+      user = await db.user.create({
+        data: {
+          id: userId,
+          email: `user_${userId}@invoiceumkm.local`,
+          plan: Plan.FREE,
+        },
+      });
+    }
+
+    const whereClause = { userId };
+
     const invoices = await db.invoice.findMany({
       where: whereClause,
       orderBy: {
@@ -60,8 +83,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching invoices:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Gagal mengambil data invoice';
     return NextResponse.json(
-      { success: false, error: 'Gagal mengambil data invoice' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }

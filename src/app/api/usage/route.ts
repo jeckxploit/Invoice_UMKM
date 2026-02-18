@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let user;
+    let user = null;
+    
+    // Try to find user by ID first
     if (userId) {
       user = await db.user.findUnique({
         where: { id: userId },
@@ -26,7 +28,10 @@ export async function GET(request: NextRequest) {
           },
         },
       });
-    } else if (email) {
+    }
+    
+    // If not found by ID, try email
+    if (!user && email) {
       user = await db.user.findUnique({
         where: { email },
         include: {
@@ -36,12 +41,22 @@ export async function GET(request: NextRequest) {
         },
       });
     }
-
+    
+    // If user not found, create a new one
     if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+      const newEmail = email || `user_${Date.now()}@invoiceumkm.local`;
+      user = await db.user.create({
+        data: {
+          id: userId || `user_${Date.now()}`,
+          email: newEmail,
+          plan: Plan.FREE,
+        },
+        include: {
+          _count: {
+            select: { invoices: true },
+          },
+        },
+      });
     }
 
     const invoiceCount = user._count.invoices;
@@ -62,8 +77,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error fetching usage:", error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch usage';
     return NextResponse.json(
-      { error: "Failed to fetch usage" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
