@@ -80,12 +80,12 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 /**
- * Main Next.js middleware
+ * Main Next.js proxy function
  * Runs on every request
  */
-export function middleware(request: NextRequest): NextResponse | undefined {
+export function proxy(request: NextRequest): NextResponse | undefined {
   const { pathname } = request.nextUrl;
-  
+
   // Skip rate limiting for static assets
   if (
     pathname.startsWith('/_next') ||
@@ -98,7 +98,7 @@ export function middleware(request: NextRequest): NextResponse | undefined {
   ) {
     return undefined;
   }
-  
+
   // Apply rate limiting to API routes
   if (pathname.startsWith('/api')) {
     const rateLimitResponse = rateLimitMiddleware(request);
@@ -106,13 +106,13 @@ export function middleware(request: NextRequest): NextResponse | undefined {
       return rateLimitResponse;
     }
   }
-  
+
   // Let the response continue
   const response = NextResponse.next();
-  
+
   // Add security headers to all responses
   addSecurityHeaders(response);
-  
+
   return response;
 }
 
