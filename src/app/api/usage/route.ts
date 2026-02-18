@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     if (userId) {
       const { data, error } = await supabase
         .from('users')
-        .select('*, invoices(count)')
+        .select('*')
         .eq('id', userId)
         .single();
       
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (!user && email) {
       const { data, error } = await supabase
         .from('users')
-        .select('*, invoices(count)')
+        .select('*')
         .eq('email', email)
         .single();
       
@@ -43,25 +43,33 @@ export async function GET(request: NextRequest) {
 
     // If user not found, create a new one
     if (!user) {
-      const newEmail = email || `user_${Date.now()}@invoiceumkm.local`;
+      const newId = userId || `user_${Date.now()}`;
+      const newEmail = email || `${newId}@invoiceumkm.local`;
       const newUser = {
-        id: userId || `user_${Date.now()}`,
+        id: newId,
         email: newEmail,
-        plan: 'FREE' as const,
+        plan: 'FREE',
       };
 
       const { data: createdUser, error } = await supabase
         .from('users')
         .insert([newUser])
-        .select('*, invoices(count)')
+        .select()
         .single();
 
       if (error) throw error;
       user = createdUser;
     }
 
-    // Get invoice count
-    const invoiceCount = user.invoices?.[0]?.count || 0;
+    // Get invoice count separately
+    const { count, error: countError } = await supabase
+      .from('invoices')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
+    if (countError) throw countError;
+
+    const invoiceCount = count || 0;
     const isPro = user.plan === 'PRO';
     const limit = isPro ? PRO_PLAN_LIMIT : FREE_PLAN_LIMIT;
     const remaining = isPro ? Infinity : Math.max(0, limit - invoiceCount);

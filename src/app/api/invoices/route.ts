@@ -45,21 +45,28 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user exists, create if not
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: userError } = await supabase
       .from('users')
       .select('id')
       .eq('id', userId)
       .single();
 
+    // PGRST116 = not found, create user
+    if (userError && userError.code !== 'PGRST116') {
+      throw userError;
+    }
+
     if (!existingUser) {
       // Auto-create user if not found
-      await supabase
+      const { error: insertError } = await supabase
         .from('users')
         .insert([{
           id: userId,
           email: `user_${userId}@invoiceumkm.local`,
           plan: 'FREE',
         }]);
+      
+      if (insertError) throw insertError;
     }
 
     const { data: invoices, error } = await supabase
@@ -72,10 +79,19 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     // Parse items JSON for each invoice
-    const invoicesWithParsedItems = invoices.map(invoice => ({
-      ...invoice,
-      items: JSON.parse(invoice.items) as InvoiceItem[],
-    }));
+    const invoicesWithParsedItems = invoices.map(invoice => {
+      try {
+        return {
+          ...invoice,
+          items: JSON.parse(invoice.items as string) as InvoiceItem[],
+        };
+      } catch {
+        return {
+          ...invoice,
+          items: [] as InvoiceItem[],
+        };
+      }
+    });
 
     return NextResponse.json({
       success: true,
@@ -100,20 +116,27 @@ export async function POST(request: NextRequest) {
     const validatedData = createInvoiceSchema.parse(body);
 
     // Check if user exists, create if not
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: userError } = await supabase
       .from('users')
       .select('id')
       .eq('id', validatedData.userId)
       .single();
 
+    // PGRST116 = not found, create user
+    if (userError && userError.code !== 'PGRST116') {
+      throw userError;
+    }
+
     if (!existingUser) {
-      await supabase
+      const { error: insertError } = await supabase
         .from('users')
         .insert([{
           id: validatedData.userId,
           email: validatedData.customerEmail || `user-${validatedData.userId}@invoiceumkm.id`,
           plan: 'FREE',
         }]);
+      
+      if (insertError) throw insertError;
     }
 
     // Calculate total
@@ -151,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // Return invoice with parsed items
+    // Return invoice with parsed items and camelCase mapping
     const responseInvoice = {
       ...invoice,
       items: validatedData.items,
