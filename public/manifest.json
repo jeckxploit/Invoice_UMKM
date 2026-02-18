@@ -1,0 +1,29 @@
+{
+  "name": "InvoiceUMKM - Solusi Invoice Modern",
+  "short_name": "InvoiceUMKM",
+  "description": "Solusi invoice modern untuk UMKM Indonesia. Terintegrasi QRIS dan siap digunakan dalam hitungan detik.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ea580c",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "finance", "productivity"],
+  "lang": "id-ID",
+  "dir": "ltr",
+  "scope": "/",
+  "prefer_related_applications": false
+}
