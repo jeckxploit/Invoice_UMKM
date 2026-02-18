@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import { z } from 'zod';
-import { Plan } from '@prisma/client';
 
 // Schema for creating invoice
 const createInvoiceSchema = z.object({
@@ -46,30 +45,31 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user exists, create if not
-    let user = await db.user.findUnique({
-      where: { id: userId },
-    });
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .single();
 
-    if (!user) {
+    if (!existingUser) {
       // Auto-create user if not found
-      user = await db.user.create({
-        data: {
+      await supabase
+        .from('users')
+        .insert([{
           id: userId,
           email: `user_${userId}@invoiceumkm.local`,
-          plan: Plan.FREE,
-        },
-      });
+          plan: 'FREE',
+        }]);
     }
 
-    const whereClause = { userId };
+    const { data: invoices, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-    const invoices = await db.invoice.findMany({
-      where: whereClause,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: limit,
-    });
+    if (error) throw error;
 
     // Parse items JSON for each invoice
     const invoicesWithParsedItems = invoices.map(invoice => ({
@@ -95,27 +95,25 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('[Invoice API] Received body:', JSON.stringify(body, null, 2));
 
     // Validate request body
     const validatedData = createInvoiceSchema.parse(body);
-    console.log('[Invoice API] Validated data:', validatedData);
 
     // Check if user exists, create if not
-    let user = await db.user.findUnique({
-      where: { id: validatedData.userId },
-    });
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', validatedData.userId)
+      .single();
 
-    if (!user) {
-      console.log('[Invoice API] User not found, creating new user...');
-      user = await db.user.create({
-        data: {
+    if (!existingUser) {
+      await supabase
+        .from('users')
+        .insert([{
           id: validatedData.userId,
           email: validatedData.customerEmail || `user-${validatedData.userId}@invoiceumkm.id`,
-          plan: Plan.FREE,
-        },
-      });
-      console.log('[Invoice API] User created:', user);
+          plan: 'FREE',
+        }]);
     }
 
     // Calculate total
@@ -123,41 +121,52 @@ export async function POST(request: NextRequest) {
       (sum, item) => sum + (item.quantity * item.price),
       0
     );
-    console.log('[Invoice API] Calculated total:', total);
 
-    // Generate invoice number (INV + timestamp + random)
+    // Generate invoice number
     const invoiceNumber = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
-    console.log('[Invoice API] Invoice number:', invoiceNumber);
 
     // Serialize items to JSON
     const itemsJson = JSON.stringify(validatedData.items);
-    console.log('[Invoice API] Items JSON:', itemsJson);
 
     // Create invoice
-    console.log('[Invoice API] Creating invoice in database...');
-    const invoice = await db.invoice.create({
-      data: {
-        userId: validatedData.userId,
-        invoiceNumber,
-        customerName: validatedData.customerName,
-        customerEmail: validatedData.customerEmail || null,
-        customerPhone: validatedData.customerPhone || null,
+    const { data: invoice, error } = await supabase
+      .from('invoices')
+      .insert([{
+        user_id: validatedData.userId,
+        invoice_number: invoiceNumber,
+        customer_name: validatedData.customerName,
+        customer_email: validatedData.customerEmail || null,
+        customer_phone: validatedData.customerPhone || null,
         address: validatedData.address || null,
-        logoUrl: validatedData.logoUrl || null,
+        logo_url: validatedData.logoUrl || null,
         notes: validatedData.notes || null,
-        themeColor: validatedData.themeColor,
+        theme_color: validatedData.themeColor,
         total,
-        isPro: validatedData.isPro,
-        hasQris: validatedData.hasQris,
+        is_pro: validatedData.isPro,
+        has_qris: validatedData.hasQris,
         items: itemsJson,
-      },
-    });
-    console.log('[Invoice API] Invoice created successfully:', invoice);
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
 
     // Return invoice with parsed items
     const responseInvoice = {
       ...invoice,
       items: validatedData.items,
+      id: invoice.id,
+      userId: invoice.user_id,
+      invoiceNumber: invoice.invoice_number,
+      customerName: invoice.customer_name,
+      customerEmail: invoice.customer_email,
+      customerPhone: invoice.customer_phone,
+      logoUrl: invoice.logo_url,
+      themeColor: invoice.theme_color,
+      hasQris: invoice.has_qris,
+      isPro: invoice.is_pro,
+      createdAt: invoice.created_at,
+      updatedAt: invoice.updated_at,
     };
 
     return NextResponse.json({
@@ -165,18 +174,16 @@ export async function POST(request: NextRequest) {
       data: responseInvoice,
     }, { status: 201 });
   } catch (error) {
-    console.error('[Invoice API] Error creating invoice:', error);
-    
+    console.error('Error creating invoice:', error);
+
     let errorMessage = 'Gagal membuat invoice';
     let statusCode = 500;
 
     if (error instanceof z.ZodError) {
       errorMessage = error.issues?.[0]?.message || 'Validasi error';
       statusCode = 400;
-      console.error('[Invoice API] Validation error:', error.issues);
     } else if (error instanceof Error) {
       errorMessage = error.message;
-      console.error('[Invoice API] Error details:', error.message);
     }
 
     return NextResponse.json(

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { Plan } from "@prisma/client";
+import { supabase } from "@/lib/supabase";
 import { FREE_PLAN_LIMIT, PRO_PLAN_LIMIT } from "@/lib/plans";
 
 export async function GET(request: NextRequest) {
@@ -20,48 +19,50 @@ export async function GET(request: NextRequest) {
 
     // Try to find user by ID first
     if (userId) {
-      user = await db.user.findUnique({
-        where: { id: userId },
-        include: {
-          _count: {
-            select: { invoices: true },
-          },
-        },
-      });
+      const { data, error } = await supabase
+        .from('users')
+        .select('*, invoices(count)')
+        .eq('id', userId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+      user = data;
     }
 
     // If not found by ID, try email
     if (!user && email) {
-      user = await db.user.findUnique({
-        where: { email },
-        include: {
-          _count: {
-            select: { invoices: true },
-          },
-        },
-      });
+      const { data, error } = await supabase
+        .from('users')
+        .select('*, invoices(count)')
+        .eq('email', email)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      user = data;
     }
 
     // If user not found, create a new one
     if (!user) {
       const newEmail = email || `user_${Date.now()}@invoiceumkm.local`;
-      const createdUser = await db.user.create({
-        data: {
-          id: userId || `user_${Date.now()}`,
-          email: newEmail,
-          plan: Plan.FREE,
-        },
-        include: {
-          _count: {
-            select: { invoices: true },
-          },
-        },
-      });
+      const newUser = {
+        id: userId || `user_${Date.now()}`,
+        email: newEmail,
+        plan: 'FREE' as const,
+      };
+
+      const { data: createdUser, error } = await supabase
+        .from('users')
+        .insert([newUser])
+        .select('*, invoices(count)')
+        .single();
+
+      if (error) throw error;
       user = createdUser;
     }
 
-    const invoiceCount = user._count.invoices;
-    const isPro = user.plan === Plan.PRO;
+    // Get invoice count
+    const invoiceCount = user.invoices?.[0]?.count || 0;
+    const isPro = user.plan === 'PRO';
     const limit = isPro ? PRO_PLAN_LIMIT : FREE_PLAN_LIMIT;
     const remaining = isPro ? Infinity : Math.max(0, limit - invoiceCount);
 
