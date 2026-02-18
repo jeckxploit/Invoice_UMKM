@@ -15,16 +15,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let user = null;
+    let user: any = null;
 
     // Try to find user by ID first
     if (userId) {
-      user = await getUserById(userId);
+      const foundUser = await getUserById(userId);
+      user = foundUser;
     }
 
     // If not found by ID, try email
     if (!user && email) {
-      user = await getUserByEmail(email);
+      const foundUser = await getUserByEmail(email);
+      user = foundUser;
     }
 
     // If user not found, create a new one
