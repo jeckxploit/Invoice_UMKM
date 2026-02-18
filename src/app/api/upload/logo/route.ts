@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { join, normalize, resolve } from 'path';
 import { existsSync } from 'fs';
 
+// Allowed image MIME types
+const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+
+// Validate file extension
+function isValidExtension(filename: string): boolean {
+  const ext = filename.toLowerCase().split('.').pop();
+  return ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '');
+}
+
+// Sanitize filename to prevent directory traversal and special characters
+function sanitizeFilename(filename: string): string {
+  // Remove path separators and dangerous characters
+  const sanitized = filename
+    .replace(/[\/\\]/g, '_')  // Remove path separators
+    .replace(/\.\./g, '_')    // Remove parent directory references
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .toLowerCase();
+  
+  // Ensure filename doesn't start with a dot
+  return sanitized.replace(/^\.+/, '') || 'unnamed';
+}
+
 export async function POST(request: NextRequest) {
+  const uploadsDir = join(process.cwd(), 'public', 'uploads');
+  
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -15,16 +39,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
+    // Validate file type by MIME type
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { success: false, error: 'Hanya file gambar yang diperbolehkan' },
+        { success: false, error: 'Hanya file gambar yang diperbolehkan (PNG, JPG, JPEG, GIF, WEBP)' },
+        { status: 400 }
+      );
+    }
+
+    // Validate file extension
+    if (!isValidExtension(file.name)) {
+      return NextResponse.json(
+        { success: false, error: 'Ekstensi file tidak valid' },
         { status: 400 }
       );
     }
 
     // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
       return NextResponse.json(
         { success: false, error: 'Ukuran file maksimal 2MB' },
         { status: 400 }
@@ -32,15 +65,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Create uploads directory if it doesn't exist
-    const uploadsDir = join(process.cwd(), 'public', 'uploads');
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
     }
 
-    // Generate unique filename
+    // Generate unique filename with sanitization
     const timestamp = Date.now();
-    const filename = `${timestamp}-${file.name.replace(/\s/g, '_')}`;
-    const filepath = join(uploadsDir, filename);
+    const sanitizedFilename = sanitizeFilename(file.name);
+    const filename = `${timestamp}-${sanitizedFilename}`;
+    const filepath = resolve(join(uploadsDir, filename));
+
+    // SECURITY: Verify the resolved path is within uploads directory
+    const normalizedUploadsDir = resolve(uploadsDir);
+    if (!filepath.startsWith(normalizedUploadsDir)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid file path' },
+        { status: 400 }
+      );
+    }
 
     // Convert file to buffer and save
     const bytes = await file.arrayBuffer();
@@ -58,9 +100,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error uploading logo:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan tidak diketahui';
     return NextResponse.json(
-      { success: false, error: 'Gagal mengupload logo' },
+      { success: false, error: `Gagal mengupload logo: ${errorMessage}` },
       { status: 500 }
     );
   }

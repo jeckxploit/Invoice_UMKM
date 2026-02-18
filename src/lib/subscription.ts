@@ -1,4 +1,5 @@
 import { Plan } from "@prisma/client";
+import { FREE_PLAN_LIMIT, PRO_PLAN_LIMIT } from "./plans";
 
 export interface SubscriptionLimits {
   maxInvoices: number;
@@ -10,9 +11,13 @@ export interface SubscriptionLimits {
   maxUsers: number;
 }
 
+// Use consistent limits from plans.ts
+const FREE_INVOICE_LIMIT = FREE_PLAN_LIMIT; // 5 invoices for FREE
+const PRO_INVOICE_LIMIT = -1; // Unlimited for PRO
+
 export const SUBSCRIPTION_LIMITS: Record<Plan, SubscriptionLimits> = {
   FREE: {
-    maxInvoices: 20,
+    maxInvoices: FREE_INVOICE_LIMIT,
     maxLogos: 1,
     hasQris: false,
     hasCustomTheme: false,
@@ -21,13 +26,13 @@ export const SUBSCRIPTION_LIMITS: Record<Plan, SubscriptionLimits> = {
     maxUsers: 1,
   },
   PRO: {
-    maxInvoices: -1, // Unlimited
+    maxInvoices: PRO_INVOICE_LIMIT, // -1 means unlimited
     maxLogos: 10,
     hasQris: true,
     hasCustomTheme: true,
     hasWatermark: false,
     hasPrioritySupport: true,
-    maxUsers: 1,
+    maxUsers: 5,
   },
 };
 
@@ -42,11 +47,11 @@ export function checkSubscriptionGate(
 } {
   const limits = SUBSCRIPTION_LIMITS[plan];
 
-  // Check invoice limit
+  // Check invoice limit (-1 means unlimited)
   if (limits.maxInvoices > 0 && currentInvoiceCount >= limits.maxInvoices) {
     return {
       allowed: false,
-      reason: "Invoice limit reached",
+      reason: "Batas invoice tercapai. Upgrade ke Pro untuk invoice unlimited.",
       limit: limits.maxInvoices,
       current: currentInvoiceCount,
     };
@@ -59,10 +64,10 @@ export function checkSubscriptionGate(
 
 export function getUpgradePrompt(plan: Plan): string {
   if (plan === "PRO") {
-    return "You're a Pro member! Enjoy unlimited features.";
+    return "Anda adalah member Pro! Nikmati fitur unlimited.";
   }
 
-  return "Upgrade to Pro for unlimited invoices and premium features.";
+  return "Upgrade ke Pro untuk invoice unlimited dan fitur premium.";
 }
 
 export function canAccessFeature(
@@ -83,4 +88,10 @@ export function canAccessFeature(
     default:
       return false;
   }
+}
+
+export function getRemainingInvoices(currentCount: number, plan: Plan): number {
+  const limits = SUBSCRIPTION_LIMITS[plan];
+  if (limits.maxInvoices < 0) return Infinity;
+  return Math.max(0, limits.maxInvoices - currentCount);
 }

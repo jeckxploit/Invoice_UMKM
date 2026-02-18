@@ -161,7 +161,9 @@ export default function DashboardPage() {
           title: 'Berhasil',
           description: 'Invoice berhasil dihapus',
         });
-        fetchInvoices();
+        if (user?.id) {
+          fetchInvoices(user.id);
+        }
       } else {
         toast({
           title: 'Error',

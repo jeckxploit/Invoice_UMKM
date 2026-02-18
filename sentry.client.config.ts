@@ -1,29 +1,22 @@
-import { sentryNextjs } from "@sentry/nextjs";
+// This file configures Sentry for the Next.js application.
+// It runs on the client side (browser).
 
-const sentryConfig = {
-  // For both Client and Server
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-
-  // Adjust this value in production, or use tracesSampler for greater control
-  tracesSampleRate: 0.1, // 10% sampling rate for production
-
-  // Setting this option to true will print useful information to the console while you're setting up Sentry.
-  debug: false,
-
-  // Enable profiling in production
-  profilesSampleRate: 0.1,
-
-  // Enable Replay for session replay
+  
+  // Performance Monitoring
+  tracesSampleRate: 1.0,
+  
+  // Session Replay
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
-
-  // Integrations
+  
   integrations: [
-    // HTTP Client Errors
-    sentryNextjs.httpClientIntegration({
-      failedRequestStatusCodes: [500, 503, 504],
+    Sentry.replayIntegration({
+      maskAllText: true,
+      blockAllMedia: true,
     }),
   ],
-};
-
-export default sentryNextjs.init(sentryConfig);
+});

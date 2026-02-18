@@ -1,12 +1,11 @@
-import { sentryNextjs } from "@sentry/nextjs";
+// This file configures Sentry for the Next.js application.
+// It runs on the Edge runtime.
 
-const sentryConfig = {
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+import * as Sentry from "@sentry/nextjs";
 
-  // Adjust this value in production
-  tracesSampleRate: 0.1,
-
-  debug: false,
-};
-
-export default sentryNextjs.init(sentryConfig);
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
+  
+  // Performance Monitoring
+  tracesSampleRate: 1.0,
+});

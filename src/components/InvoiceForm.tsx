@@ -90,17 +90,21 @@ export function InvoiceForm({ isPro = false, userId: propUserId }: InvoiceFormPr
     const file = e.target.files?.[0];
     if (!file) return;
 
+    console.log('[InvoiceForm] Uploading file:', file.name, file.type, file.size);
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
 
+      console.log('[InvoiceForm] Sending request to /api/upload/logo');
       const response = await fetch('/api/upload/logo', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('[InvoiceForm] Response status:', response.status);
       const result = await response.json();
+      console.log('[InvoiceForm] Response data:', result);
 
       if (result.success) {
         setLogoUrl(result.data.url);
@@ -109,6 +113,7 @@ export function InvoiceForm({ isPro = false, userId: propUserId }: InvoiceFormPr
           description: 'Logo berhasil diupload',
         });
       } else {
+        console.error('[InvoiceForm] Upload failed:', result.error);
         toast({
           title: 'Error',
           description: result.error || 'Gagal upload logo',
@@ -116,10 +121,11 @@ export function InvoiceForm({ isPro = false, userId: propUserId }: InvoiceFormPr
         });
       }
     } catch (error) {
-      console.error('Error uploading logo:', error);
+      console.error('[InvoiceForm] Error uploading logo:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Terjadi kesalahan saat upload logo';
       toast({
         title: 'Error',
-        description: 'Terjadi kesalahan saat upload logo',
+        description: errorMsg,
         variant: 'destructive',
       });
     } finally {
