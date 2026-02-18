@@ -66,11 +66,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if running on Vercel (serverless)
-    const isVercel = !!process.env.VERCEL;
+    // Check if running on serverless (Vercel, Netlify, Cloudflare, etc.)
+    const isServerless = !!process.env.VERCEL || !!process.env.NETLIFY || !!process.env.CF_PAGES;
 
-    if (isVercel) {
-      // On Vercel: return base64 data URL
+    if (isServerless) {
+      // On serverless (Vercel/Netlify): return base64 data URL
       const base64Url = await fileToBase64(file);
       
       return NextResponse.json({
