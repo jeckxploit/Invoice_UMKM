@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
-import { join, normalize, resolve } from 'path';
+import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 
 // Allowed image MIME types
@@ -14,20 +14,22 @@ function isValidExtension(filename: string): boolean {
 
 // Sanitize filename to prevent directory traversal and special characters
 function sanitizeFilename(filename: string): string {
-  // Remove path separators and dangerous characters
   const sanitized = filename
-    .replace(/[\/\\]/g, '_')  // Remove path separators
-    .replace(/\.\./g, '_')    // Remove parent directory references
+    .replace(/[\/\\]/g, '_')
+    .replace(/\.\./g, '_')
     .replace(/[^a-zA-Z0-9._-]/g, '_')
     .toLowerCase();
-  
-  // Ensure filename doesn't start with a dot
   return sanitized.replace(/^\.+/, '') || 'unnamed';
 }
 
+// Convert file to base64
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+  return `data:${file.type};base64,${buffer.toString('base64')}`;
+}
+
 export async function POST(request: NextRequest) {
-  const uploadsDir = join(process.cwd(), 'public', 'uploads');
-  
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -64,43 +66,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create uploads directory if it doesn't exist
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true });
+    // Check if running on Vercel (serverless)
+    const isVercel = !!process.env.VERCEL;
+
+    if (isVercel) {
+      // On Vercel: return base64 data URL
+      const base64Url = await fileToBase64(file);
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          url: base64Url,
+          filename: file.name,
+          type: file.type,
+          size: file.size,
+        },
+      });
+    } else {
+      // Local development: save to filesystem
+      const uploadsDir = join(process.cwd(), 'public', 'uploads');
+
+      // Create uploads directory if it doesn't exist
+      if (!existsSync(uploadsDir)) {
+        await mkdir(uploadsDir, { recursive: true });
+      }
+
+      // Generate unique filename with sanitization
+      const timestamp = Date.now();
+      const sanitizedFilename = sanitizeFilename(file.name);
+      const filename = `${timestamp}-${sanitizedFilename}`;
+      const filepath = resolve(join(uploadsDir, filename));
+
+      // SECURITY: Verify the resolved path is within uploads directory
+      const normalizedUploadsDir = resolve(uploadsDir);
+      if (!filepath.startsWith(normalizedUploadsDir)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid file path' },
+          { status: 400 }
+        );
+      }
+
+      // Convert file to buffer and save
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      await writeFile(filepath, buffer);
+
+      // Return the URL
+      const fileUrl = `/uploads/${filename}`;
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          url: fileUrl,
+          filename,
+        },
+      });
     }
-
-    // Generate unique filename with sanitization
-    const timestamp = Date.now();
-    const sanitizedFilename = sanitizeFilename(file.name);
-    const filename = `${timestamp}-${sanitizedFilename}`;
-    const filepath = resolve(join(uploadsDir, filename));
-
-    // SECURITY: Verify the resolved path is within uploads directory
-    const normalizedUploadsDir = resolve(uploadsDir);
-    if (!filepath.startsWith(normalizedUploadsDir)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid file path' },
-        { status: 400 }
-      );
-    }
-
-    // Convert file to buffer and save
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await writeFile(filepath, buffer);
-
-    // Return the URL
-    const fileUrl = `/uploads/${filename}`;
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        url: fileUrl,
-        filename,
-      },
-    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan tidak diketahui';
+    console.error('[Upload Logo] Error:', errorMessage);
     return NextResponse.json(
       { success: false, error: `Gagal mengupload logo: ${errorMessage}` },
       { status: 500 }
