@@ -32,6 +32,18 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  
+  // Clear API cache from old service worker
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys
+          .filter((key) => key.includes('api') || key.includes('dynamic'))
+          .map((key) => caches.delete(key))
+      );
+    })
+  );
+  
   self.clients.claim();
 });
 
@@ -42,6 +54,30 @@ self.addEventListener('fetch', (event) => {
 
   // Skip chrome-extension and other non-http requests
   if (!event.request.url.startsWith('http')) return;
+  
+  // Skip API routes - always fetch from network
+  const url = new URL(event.request.url);
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Don't cache API responses
+          return networkResponse;
+        })
+        .catch((error) => {
+          console.error('API fetch error:', error);
+          // Return error response, don't fallback to cache
+          return new Response(JSON.stringify({ 
+            error: 'Network error', 
+            message: 'Unable to fetch from server' 
+          }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
@@ -70,5 +106,16 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  // Handle cache clear command
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    event.waitUntil(
+      caches.keys().then((keys) => {
+        return Promise.all(
+          keys.map((key) => caches.delete(key))
+        );
+      })
+    );
   }
 });
