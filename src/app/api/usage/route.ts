@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let user = null;
-    
+    let user: any = null;
+
     // Try to find user by ID first
     if (userId) {
       user = await db.user.findUnique({
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         },
       });
     }
-    
+
     // If not found by ID, try email
     if (!user && email) {
       user = await db.user.findUnique({
@@ -41,11 +41,11 @@ export async function GET(request: NextRequest) {
         },
       });
     }
-    
+
     // If user not found, create a new one
     if (!user) {
       const newEmail = email || `user_${Date.now()}@invoiceumkm.local`;
-      user = await db.user.create({
+      const createdUser = await db.user.create({
         data: {
           id: userId || `user_${Date.now()}`,
           email: newEmail,
@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
           },
         },
       });
+      user = createdUser;
     }
 
     const invoiceCount = user._count.invoices;
