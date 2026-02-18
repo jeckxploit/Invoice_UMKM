@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getUserById, createUser, getInvoicesByUserId, createInvoice } from '@/lib/supabase';
 import { z } from 'zod';
 
 // Schema for creating invoice
@@ -45,38 +45,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user exists, create if not
-    const { data: existingUser, error: userError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single();
+    let user = await getUserById(userId);
 
-    // PGRST116 = not found, create user
-    if (userError && userError.code !== 'PGRST116') {
-      throw userError;
-    }
-
-    if (!existingUser) {
+    if (!user) {
       // Auto-create user if not found
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert([{
-          id: userId,
-          email: `user_${userId}@invoiceumkm.local`,
-          plan: 'FREE',
-        }]);
-      
-      if (insertError) throw insertError;
+      await createUser(`user_${userId}@invoiceumkm.local`, 'FREE');
     }
 
-    const { data: invoices, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
+    const invoices = await getInvoicesByUserId(userId, limit);
 
     // Parse items JSON for each invoice
     const invoicesWithParsedItems = invoices.map(invoice => {
@@ -116,27 +92,13 @@ export async function POST(request: NextRequest) {
     const validatedData = createInvoiceSchema.parse(body);
 
     // Check if user exists, create if not
-    const { data: existingUser, error: userError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', validatedData.userId)
-      .single();
+    let user = await getUserById(validatedData.userId);
 
-    // PGRST116 = not found, create user
-    if (userError && userError.code !== 'PGRST116') {
-      throw userError;
-    }
-
-    if (!existingUser) {
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert([{
-          id: validatedData.userId,
-          email: validatedData.customerEmail || `user-${validatedData.userId}@invoiceumkm.id`,
-          plan: 'FREE',
-        }]);
-      
-      if (insertError) throw insertError;
+    if (!user) {
+      await createUser(
+        validatedData.customerEmail || `user-${validatedData.userId}@invoiceumkm.id`,
+        'FREE'
+      );
     }
 
     // Calculate total
@@ -152,27 +114,23 @@ export async function POST(request: NextRequest) {
     const itemsJson = JSON.stringify(validatedData.items);
 
     // Create invoice
-    const { data: invoice, error } = await supabase
-      .from('invoices')
-      .insert([{
-        user_id: validatedData.userId,
-        invoice_number: invoiceNumber,
-        customer_name: validatedData.customerName,
-        customer_email: validatedData.customerEmail || null,
-        customer_phone: validatedData.customerPhone || null,
-        address: validatedData.address || null,
-        logo_url: validatedData.logoUrl || null,
-        notes: validatedData.notes || null,
-        theme_color: validatedData.themeColor,
-        total,
-        is_pro: validatedData.isPro,
-        has_qris: validatedData.hasQris,
-        items: itemsJson,
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
+    const invoice = await createInvoice({
+      user_id: validatedData.userId,
+      invoice_number: invoiceNumber,
+      customer_name: validatedData.customerName,
+      customer_email: validatedData.customerEmail || null,
+      customer_phone: validatedData.customerPhone || null,
+      address: validatedData.address || null,
+      logo_url: validatedData.logoUrl || null,
+      notes: validatedData.notes || null,
+      theme_color: validatedData.themeColor,
+      total,
+      is_pro: validatedData.isPro,
+      has_qris: validatedData.hasQris,
+      items: itemsJson,
+      status: 'pending',
+      tanggal: new Date().toISOString(),
+    });
 
     // Return invoice with parsed items and camelCase mapping
     const responseInvoice = {

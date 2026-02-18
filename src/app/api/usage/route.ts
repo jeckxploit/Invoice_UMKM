@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getUserById, getUserByEmail, createUser, getInvoiceCount } from "@/lib/supabase";
 import { FREE_PLAN_LIMIT, PRO_PLAN_LIMIT } from "@/lib/plans";
 
 export async function GET(request: NextRequest) {
@@ -15,61 +15,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let user: any = null;
+    let user = null;
 
     // Try to find user by ID first
     if (userId) {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
-      user = data;
+      user = await getUserById(userId);
     }
 
     // If not found by ID, try email
     if (!user && email) {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') throw error;
-      user = data;
+      user = await getUserByEmail(email);
     }
 
     // If user not found, create a new one
     if (!user) {
       const newId = userId || `user_${Date.now()}`;
       const newEmail = email || `${newId}@invoiceumkm.local`;
-      const newUser = {
-        id: newId,
-        email: newEmail,
-        plan: 'FREE',
-      };
-
-      const { data: createdUser, error } = await supabase
-        .from('users')
-        .insert([newUser])
-        .select()
-        .single();
-
-      if (error) throw error;
-      user = createdUser;
+      user = await createUser(newEmail, 'FREE');
     }
 
-    // Get invoice count separately
-    const { count, error: countError } = await supabase
-      .from('invoices')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id);
-
-    if (countError) throw countError;
-
-    const invoiceCount = count || 0;
+    // Get invoice count
+    const invoiceCount = await getInvoiceCount(user.id);
     const isPro = user.plan === 'PRO';
     const limit = isPro ? PRO_PLAN_LIMIT : FREE_PLAN_LIMIT;
     const remaining = isPro ? Infinity : Math.max(0, limit - invoiceCount);
