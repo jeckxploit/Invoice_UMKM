@@ -33,6 +33,7 @@ import { QuickAction } from '@/components/dashboard/QuickAction';
 import { Plan } from '@prisma/client';
 import { useToast } from '@/hooks/use-toast';
 import { useTheme } from 'next-themes';
+import { cn } from '@/lib/utils';
 
 interface InvoiceItem {
   name: string;
@@ -196,13 +197,26 @@ export default function DashboardPage() {
       const result = await response.json();
 
       if (result.success) {
-        const printWindow = window.open('', '_blank');
+        // Create a new window/tab for printing
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        
         if (printWindow) {
+          printWindow.document.open();
           printWindow.document.write(result.data.html);
           printWindow.document.close();
+          
+          // Wait for content to load before printing
           printWindow.onload = () => {
+            printWindow.focus();
             printWindow.print();
           };
+        } else {
+          // Popup was blocked, show alternative
+          toast({
+            title: 'Popup Diblokir',
+            description: 'Izinkan popup untuk mendownload invoice',
+            variant: 'destructive',
+          });
         }
       } else {
         toast({
@@ -562,9 +576,4 @@ export default function DashboardPage() {
       </footer>
     </div>
   );
-}
-
-// Helper for conditional class names
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(' ');
 }
