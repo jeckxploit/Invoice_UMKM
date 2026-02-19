@@ -65,6 +65,8 @@ export async function POST(request: NextRequest) {
   try {
     const { invoiceId } = await request.json();
 
+    console.log('[PDF Generate] Request invoiceId:', invoiceId);
+
     if (!invoiceId) {
       return NextResponse.json(
         { success: false, error: 'Invoice ID diperlukan' },
@@ -77,6 +79,8 @@ export async function POST(request: NextRequest) {
       where: { id: invoiceId },
     }) as InvoiceWithItems | null;
 
+    console.log('[PDF Generate] Found invoice:', invoice ? 'yes' : 'no');
+
     if (!invoice) {
       return NextResponse.json(
         { success: false, error: 'Invoice tidak ditemukan' },
@@ -85,7 +89,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse items JSON
-    const parsedItems = JSON.parse(invoice.items) as InvoiceItem[];
+    let parsedItems: InvoiceItem[];
+    try {
+      parsedItems = JSON.parse(invoice.items) as InvoiceItem[];
+      console.log('[PDF Generate] Parsed items:', parsedItems.length);
+    } catch (parseError) {
+      console.error('[PDF Generate] Error parsing items:', parseError);
+      return NextResponse.json(
+        { success: false, error: 'Invalid invoice data' },
+        { status: 500 }
+      );
+    }
 
     // Generate HTML for PDF
     const html = generateInvoiceHTML(invoice, parsedItems);
@@ -102,9 +116,10 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error generating PDF:', error);
+    console.error('[PDF Generate] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { success: false, error: 'Gagal generate PDF' },
+      { success: false, error: `Gagal generate PDF: ${errorMessage}` },
       { status: 500 }
     );
   }

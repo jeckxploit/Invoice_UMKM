@@ -153,11 +153,15 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    
+
+    console.log('[DELETE Invoice] Attempting to delete invoice:', id);
+
     // Check if invoice exists
     const existingInvoice = await db.invoice.findUnique({
       where: { id },
     });
+
+    console.log('[DELETE Invoice] Found invoice:', existingInvoice ? 'yes' : 'no');
 
     if (!existingInvoice) {
       return NextResponse.json(
@@ -171,14 +175,17 @@ export async function DELETE(
       where: { id },
     });
 
+    console.log('[DELETE Invoice] Successfully deleted:', id);
+
     return NextResponse.json({
       success: true,
       message: 'Invoice berhasil dihapus',
     });
   } catch (error) {
-    console.error('Error deleting invoice:', error);
+    console.error('[DELETE Invoice] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { success: false, error: 'Gagal menghapus invoice' },
+      { success: false, error: `Gagal menghapus invoice: ${errorMessage}` },
       { status: 500 }
     );
   }
