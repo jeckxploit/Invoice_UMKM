@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getInvoiceById } from '@/lib/supabase';
 
 // Interface for Invoice Item
 interface InvoiceItem {
@@ -12,28 +12,27 @@ interface InvoiceItem {
 // Interface for Invoice with parsed items
 interface InvoiceWithItems {
   id: string;
-  userId: string;
-  invoiceNumber: string;
-  customerName: string;
-  customerEmail: string | null;
-  customerPhone: string | null;
+  user_id: string;
+  invoice_number: string;
+  customer_name: string;
+  customer_email: string | null;
+  customer_phone: string | null;
   address: string | null;
-  logoUrl: string | null;
+  logo_url: string | null;
   notes: string | null;
   items: string; // JSON string
   total: number;
   status: string;
-  isPro: boolean;
-  hasQris: boolean;
-  themeColor: string;
-  tanggal: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  is_pro: boolean;
+  has_qris: boolean;
+  theme_color: string;
+  tanggal: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
  * Escape HTML to prevent XSS attacks
- * Replaces dangerous characters with HTML entities
  */
 function escapeHtml(text: string | null | undefined): string {
   if (!text) return '';
@@ -48,16 +47,13 @@ function escapeHtml(text: string | null | undefined): string {
 }
 
 /**
- * Sanitize CSS color value to prevent CSS injection
- * Only allows valid hex colors
+ * Sanitize CSS color value
  */
 function sanitizeColor(color: string): string {
-  // Validate hex color format
   const hexColorRegex = /^#[0-9A-Fa-f]{6}$/;
   if (hexColorRegex.test(color)) {
     return color;
   }
-  // Default to black if invalid
   return '#000000';
 }
 
@@ -74,10 +70,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch invoice
-    const invoice = await db.invoice.findUnique({
-      where: { id: invoiceId },
-    }) as InvoiceWithItems | null;
+    // Fetch invoice using Supabase helper
+    const invoice = await getInvoiceById(invoiceId);
 
     console.log('[PDF Generate] Found invoice:', invoice ? 'yes' : 'no');
 
@@ -110,8 +104,20 @@ export async function POST(request: NextRequest) {
       data: {
         html,
         invoice: {
-          ...invoice,
+          id: invoice.id,
+          userId: invoice.user_id,
+          invoiceNumber: invoice.invoice_number,
+          customerName: invoice.customer_name,
+          customerEmail: invoice.customer_email,
+          customerPhone: invoice.customer_phone,
+          logoUrl: invoice.logo_url,
+          themeColor: invoice.theme_color,
+          hasQris: invoice.has_qris,
+          isPro: invoice.is_pro,
           items: parsedItems,
+          total: invoice.total,
+          status: invoice.status,
+          tanggal: invoice.tanggal,
         },
       },
     });
@@ -126,8 +132,8 @@ export async function POST(request: NextRequest) {
 }
 
 function generateInvoiceHTML(invoice: InvoiceWithItems, items: InvoiceItem[]) {
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('id-ID', {
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
       day: '2-digit',
       month: 'long',
       year: 'numeric',
@@ -143,25 +149,23 @@ function generateInvoiceHTML(invoice: InvoiceWithItems, items: InvoiceItem[]) {
     }).format(amount);
   };
 
-  // Sanitize theme color
-  const safeThemeColor = sanitizeColor(invoice.themeColor);
+  const safeThemeColor = sanitizeColor(invoice.theme_color);
 
-  const watermark = !invoice.isPro ? `
+  const watermark = !invoice.is_pro ? `
     <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); opacity: 0.05; font-size: 80px; font-weight: bold; color: #000; z-index: -1; white-space: nowrap;">
       INVOICEUMKM - FREE VERSION
     </div>
   ` : '';
 
-  // Escape all user-provided data
   const escapedData = {
-    invoiceNumber: escapeHtml(invoice.invoiceNumber),
-    customerName: escapeHtml(invoice.customerName),
-    customerEmail: escapeHtml(invoice.customerEmail),
-    customerPhone: escapeHtml(invoice.customerPhone),
+    invoiceNumber: escapeHtml(invoice.invoice_number),
+    customerName: escapeHtml(invoice.customer_name),
+    customerEmail: escapeHtml(invoice.customer_email),
+    customerPhone: escapeHtml(invoice.customer_phone),
     address: escapeHtml(invoice.address),
     notes: escapeHtml(invoice.notes),
     status: escapeHtml(invoice.status),
-    logoUrl: invoice.logoUrl ? escapeHtml(invoice.logoUrl) : null,
+    logoUrl: invoice.logo_url ? escapeHtml(invoice.logo_url) : null,
   };
 
   return `
@@ -381,7 +385,7 @@ function generateInvoiceHTML(invoice: InvoiceWithItems, items: InvoiceItem[]) {
     </div>
   ` : ''}
 
-  ${invoice.hasQris && invoice.isPro ? `
+  ${invoice.has_qris && invoice.is_pro ? `
     <div class="qris-section">
       <div class="qris-title">📱 Scan QRIS untuk Pembayaran</div>
       <div class="qris-qr">
@@ -393,7 +397,7 @@ function generateInvoiceHTML(invoice: InvoiceWithItems, items: InvoiceItem[]) {
 
   <div class="footer">
     <p>Dibuat dengan InvoiceUMKM - Solusi Invoice untuk UMKM Indonesia</p>
-    <p style="margin-top: 5px;">${formatDate(invoice.createdAt)}</p>
+    <p style="margin-top: 5px;">${formatDate(invoice.created_at)}</p>
   </div>
 </body>
 </html>

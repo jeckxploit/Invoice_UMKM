@@ -202,3 +202,20 @@ export async function deleteInvoice(id: string): Promise<boolean> {
   if (error) throw error
   return true
 }
+
+// Helper function to get invoice by ID
+export async function getInvoiceById(id: string): Promise<Invoice | null> {
+  if (!isConfigured || !supabase) {
+    // Fallback mode
+    return inMemoryInvoices.get(id) || null
+  }
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error && error.code !== 'PGRST116') throw error
+  return data
+}

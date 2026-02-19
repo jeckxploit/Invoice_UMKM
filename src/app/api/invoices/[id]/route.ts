@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getInvoiceById, deleteInvoice } from '@/lib/supabase';
 import { z } from 'zod';
 
 // Interface for Invoice Item
@@ -17,9 +17,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const invoice = await db.invoice.findUnique({
-      where: { id },
-    });
+
+    console.log('[GET Invoice] Request ID:', id);
+
+    const invoice = await getInvoiceById(id);
+
+    console.log('[GET Invoice] Found:', invoice ? 'yes' : 'no');
 
     if (!invoice) {
       return NextResponse.json(
@@ -29,9 +32,30 @@ export async function GET(
     }
 
     // Parse items JSON
+    let items: InvoiceItem[];
+    try {
+      items = JSON.parse(invoice.items) as InvoiceItem[];
+    } catch (parseError) {
+      console.error('[GET Invoice] Error parsing items:', parseError);
+      items = [];
+    }
+
+    // Convert to camelCase for consistency
     const responseInvoice = {
       ...invoice,
-      items: JSON.parse(invoice.items) as InvoiceItem[],
+      id: invoice.id,
+      userId: invoice.user_id,
+      invoiceNumber: invoice.invoice_number,
+      customerName: invoice.customer_name,
+      customerEmail: invoice.customer_email,
+      customerPhone: invoice.customer_phone,
+      logoUrl: invoice.logo_url,
+      themeColor: invoice.theme_color,
+      hasQris: invoice.has_qris,
+      isPro: invoice.is_pro,
+      createdAt: invoice.created_at,
+      updatedAt: invoice.updated_at,
+      items,
     };
 
     return NextResponse.json({
@@ -39,15 +63,16 @@ export async function GET(
       data: responseInvoice,
     });
   } catch (error) {
-    console.error('Error fetching invoice:', error);
+    console.error('[GET Invoice] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Gagal mengambil data invoice';
     return NextResponse.json(
-      { success: false, error: 'Gagal mengambil data invoice' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
 }
 
-// PUT - Update invoice
+// PUT - Update invoice (not fully implemented)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -56,30 +81,10 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    // Schema for updating invoice
-    const updateInvoiceSchema = z.object({
-      customerName: z.string().min(1, 'Nama pelanggan wajib diisi').optional(),
-      customerEmail: z.string().email().optional().or(z.literal('')),
-      customerPhone: z.string().optional(),
-      address: z.string().optional(),
-      logoUrl: z.string().optional(),
-      notes: z.string().optional(),
-      status: z.enum(['pending', 'paid', 'overdue']).optional(),
-      themeColor: z.string().optional(),
-      items: z.array(z.object({
-        name: z.string().min(1, 'Nama item wajib diisi'),
-        description: z.string().optional(),
-        quantity: z.number().min(1, 'Jumlah harus lebih dari 0'),
-        price: z.number().min(0, 'Harga tidak boleh negatif'),
-      })).optional(),
-    });
-
-    const validatedData = updateInvoiceSchema.parse(body);
+    console.log('[PUT Invoice] Request ID:', id, 'Body:', body);
 
     // Check if invoice exists
-    const existingInvoice = await db.invoice.findUnique({
-      where: { id },
-    });
+    const existingInvoice = await getInvoiceById(id);
 
     if (!existingInvoice) {
       return NextResponse.json(
@@ -88,57 +93,13 @@ export async function PUT(
       );
     }
 
-    // Calculate new total if items are provided
-    let total = existingInvoice.total;
-    let itemsJson = existingInvoice.items;
-
-    if (validatedData.items) {
-      total = validatedData.items.reduce(
-        (sum, item) => sum + (item.quantity * item.price),
-        0
-      );
-      itemsJson = JSON.stringify(validatedData.items);
-    }
-
-    // Update invoice
-    const updateData: any = {};
-    if (validatedData.customerName !== undefined) updateData.customerName = validatedData.customerName;
-    if (validatedData.customerEmail !== undefined) updateData.customerEmail = validatedData.customerEmail || null;
-    if (validatedData.customerPhone !== undefined) updateData.customerPhone = validatedData.customerPhone || null;
-    if (validatedData.address !== undefined) updateData.address = validatedData.address || null;
-    if (validatedData.logoUrl !== undefined) updateData.logoUrl = validatedData.logoUrl || null;
-    if (validatedData.notes !== undefined) updateData.notes = validatedData.notes || null;
-    if (validatedData.status !== undefined) updateData.status = validatedData.status;
-    if (validatedData.themeColor !== undefined) updateData.themeColor = validatedData.themeColor;
-    updateData.total = total;
-    if (validatedData.items) updateData.items = itemsJson;
-
-    const invoice = await db.invoice.update({
-      where: { id },
-      data: updateData,
-    });
-
-    // Parse items for response
-    const responseInvoice = {
-      ...invoice,
-      items: JSON.parse(invoice.items) as InvoiceItem[],
-    };
-
-    return NextResponse.json({
-      success: true,
-      data: responseInvoice,
-    });
+    // Note: Update not fully implemented - would need updateInvoice helper
+    return NextResponse.json(
+      { success: false, error: 'Update not implemented yet' },
+      { status: 501 }
+    );
   } catch (error) {
-    console.error('Error updating invoice:', error);
-    
-    if (error instanceof z.ZodError) {
-      const errorMessage = error.issues?.[0]?.message || 'Validasi error';
-      return NextResponse.json(
-        { success: false, error: errorMessage },
-        { status: 400 }
-      );
-    }
-    
+    console.error('[PUT Invoice] Error:', error);
     return NextResponse.json(
       { success: false, error: 'Gagal mengupdate invoice' },
       { status: 500 }
@@ -157,9 +118,7 @@ export async function DELETE(
     console.log('[DELETE Invoice] Attempting to delete invoice:', id);
 
     // Check if invoice exists
-    const existingInvoice = await db.invoice.findUnique({
-      where: { id },
-    });
+    const existingInvoice = await getInvoiceById(id);
 
     console.log('[DELETE Invoice] Found invoice:', existingInvoice ? 'yes' : 'no');
 
@@ -171,9 +130,7 @@ export async function DELETE(
     }
 
     // Delete invoice
-    await db.invoice.delete({
-      where: { id },
-    });
+    await deleteInvoice(id);
 
     console.log('[DELETE Invoice] Successfully deleted:', id);
 
