@@ -2,7 +2,7 @@
   "name": "InvoiceUMKM - Solusi Invoice Modern",
   "short_name": "InvoiceUMKM",
   "description": "Solusi invoice modern untuk UMKM Indonesia. Terintegrasi QRIS dan siap digunakan dalam hitungan detik.",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ea580c",
