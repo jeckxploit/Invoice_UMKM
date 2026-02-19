@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { InstallPWAButton } from "@/components/InstallPWAButton";
 
 export function PWAProvider({ children }: { children: React.ReactNode }) {
   const [isClient, setIsClient] = useState(false);
@@ -55,6 +56,7 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+      <InstallPWAButton />
       {isClient && updateAvailable && (
         <div className="fixed bottom-4 left-4 z-50 bg-white dark:bg-gray-900 shadow-lg rounded-lg p-4 border border-gray-200 dark:border-gray-700 animate-fade-in">
           <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
